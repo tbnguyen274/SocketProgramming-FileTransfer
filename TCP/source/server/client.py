@@ -27,7 +27,10 @@ NUM_OF_CHUNKS = 4
 
 BUFFER_SIZE = 4096
 FORMAT = "utf-8"
-OUTPUT_DIR = "./output"
+
+# Get the directory of the current script
+CURRENT_WORKSPACE = os.path.dirname(os.path.abspath(__file__))
+OUTPUT_DIR = os.path.join(CURRENT_WORKSPACE, "output")
 
 # Active download threads
 active_threads = []
@@ -107,11 +110,17 @@ def main():
 
     files = []
 
+    # Construct the full path to the input file
+    input_file_path = os.path.join(CURRENT_WORKSPACE, "input.txt")
+
     # Read the list of files to download
-    with open("input.txt", "r") as f:
+    with open(input_file_path, "r") as f:
         for file in f:
             files.append(file.strip())
     
+    # Ensure the output directory exists
+    os.makedirs(OUTPUT_DIR, exist_ok=True)
+
     # Download each file in the list
     for filename in files:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
@@ -125,6 +134,9 @@ def main():
         thread.join()
     
     print("All files downloaded successfully!")
+    
+    # don't let the terminal window close immediately
+    input("Press Enter to exit...")
         
     
 if __name__ == "__main__":
