@@ -17,14 +17,11 @@ dung lượng và mở file thành công)
 
 '''
 
-# Server address
 HOST = '127.0.0.1'
 PORT = 12345
 ADDR = (HOST, PORT)
-
-# Number of chunks to download in parallel
 NUM_OF_CHUNKS = 4
-
+MAX_RETRIES = 3
 BUFFER_SIZE = 4096
 FORMAT = "utf-8"
 
@@ -42,42 +39,52 @@ def fetch_file_list():
         client.send("Filelist".encode(FORMAT))
         file_list = client.recv(BUFFER_SIZE).decode()
         print("Available files on the server:")
-        print(file_list)
+        print(f"{file_list}\n")
+        
         
 # Function to download a chunk
 def download_chunk(filename, offset, chunk_size, part_id, progress):
-    try:
-        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
-            client.connect(ADDR)
-            request = f"REQUEST {filename} {offset} {chunk_size}"
-            client.send(request.encode(FORMAT))
+    retry_count = 0
+    while retry_count < MAX_RETRIES:
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+                client.connect(ADDR)
+                request = f"REQUEST {filename} {offset} {chunk_size}"
+                client.send(request.encode(FORMAT))
 
-            # Receive the chunk data
-            data = b''
-            while len(data) < chunk_size:
-                packet = client.recv(BUFFER_SIZE)
-                if not packet:
-                    break
-                data += packet
+                # Receive the chunk data
+                chunk_path = os.path.join(OUTPUT_DIR, f"{filename}.part{part_id}")
+                total_received = 0
+                
+                with open(chunk_path, "wb") as chunk_file:
+                    while total_received < chunk_size:
+                        packet = client.recv(BUFFER_SIZE)
+                        if not packet:
+                            break
+                        chunk_file.write(packet)
+                        total_received += len(packet)
+                        progress[part_id] = total_received
 
-            # Save the chunk to a temporary file
-            chunk_path = os.path.join(OUTPUT_DIR, f"{filename}.part{part_id}")
-            with open(chunk_path, "wb") as chunk_file:
-                chunk_file.write(data)
-            
-            progress[part_id] = len(data)
-    except Exception as e:
-        print(f"Error downloading chunk {part_id} of {filename}: {e}")
+                break
+        except Exception as e:
+            retry_count += 1
+            if retry_count == MAX_RETRIES:
+                print(f"Error downloading chunk {part_id} of {filename}: {e}")
+            else:
+                print(f"Retrying chunk {part_id} of {filename}...")
     
 # Function to download a file
 def download_file(filename, file_size):
     chunk_size = file_size // NUM_OF_CHUNKS
+    remainder = file_size % NUM_OF_CHUNKS
     progress = [0] * NUM_OF_CHUNKS
     threads = []
 
     # Start threads for each chunk
     for i in range(NUM_OF_CHUNKS):
         offset = i * chunk_size
+        if i == NUM_OF_CHUNKS - 1:
+            chunk_size += remainder
         thread = threading.Thread(target=download_chunk, args=(filename, offset, chunk_size, i, progress))
         threads.append(thread)
         active_threads.append(thread)  # Track active threads
@@ -133,7 +140,7 @@ def main():
     for thread in active_threads:
         thread.join()
     
-    print("All files downloaded successfully!")
+    print("\nAll files downloaded successfully!")
     
     # don't let the terminal window close immediately
     input("Press Enter to exit...")

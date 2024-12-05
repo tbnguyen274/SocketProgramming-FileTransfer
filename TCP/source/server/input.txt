@@ -1,3 +1,3 @@
-LeagueClient.exe
-SteamUI.dll
 vldc2.pdf
+Cloudflare_WARP_2024.6.473.0.msi
+RPReplay_Final1712081223.MP4

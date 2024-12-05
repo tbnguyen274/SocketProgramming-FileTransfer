@@ -16,7 +16,8 @@ def getFileList():
 
     with open(FILELIST, 'r') as list:
         for file in list:
-            fileList.append(file)
+            if file:
+                fileList.append(file.strip())
     
     return fileList
 
@@ -45,7 +46,8 @@ def sendFileChunk(client, file, offset, chunk):
             totalSent += sent
             f.seek(offset + totalSent)
 
-def processClient(server, client):
+def processClient(server, client, addr):
+    print(f"Client {addr} connected successfully.")
     request = client.recv(BUFFER).decode(FORMAT)
 
     if request == 'Filelist':
@@ -73,13 +75,13 @@ def run():
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
     server.listen(MAX_CONNECTIONS)
-    print(f"Server is running on port: {PORT}.\n\n")
+    print(f"Server is running on port: {PORT}.\n")
     
     try:
         while True:
             conn, addr = server.accept()
 
-            clientThread = threading.Thread(target=processClient, args=(server, conn))  
+            clientThread = threading.Thread(target=processClient, args=(server, conn, addr))  
             clientThread.start()
     finally:
         server.close()
