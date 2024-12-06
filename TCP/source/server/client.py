@@ -38,6 +38,14 @@ def fetch_file_list(client):
     file_list = client.recv(BUFFER_SIZE).decode()
     print("Available files on the server:")
     print(f"{file_list}")
+    
+    file_array = file_list.split("\n")
+    file_names = []
+    for file in file_array:
+        if file.strip():  # Check if the line is not empty
+            file_names.append(file.split()[0])
+    
+    return file_names
         
         
 # Function to download a chunk
@@ -126,9 +134,9 @@ def main():
         print(welcome)
         
         # Fetch the file list from the server
-        fetch_file_list(client)
+        available_files = fetch_file_list(client)
 
-        files = []
+        input_files = []
 
         # Construct the full path to the input file
         input_file_path = os.path.join(CURRENT_WORKSPACE, "input.txt")
@@ -136,25 +144,31 @@ def main():
         # Read the list of files to download
         with open(input_file_path, "r") as f:
             for file in f:
-                files.append(file.strip())
+                input_files.append(file.strip())
         
         # Ensure the output directory exists
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
         # Download each file in the list
-        for filename in files:
-                client.send(f"SIZE {filename}\n".encode())
-                file_size = int(client.recv(BUFFER_SIZE).decode())
-                download_file(filename, file_size)
-                
-                # Respond to the server that the file has been downloaded
-                client.send(f"ACK {filename}\n".encode())
+        for filename in input_files:
+            # Check if the file exists on the server
+            if filename not in available_files:
+                print(f"{filename} not found on the server.")
+                continue
+            
+            print(f"Downloading {filename}...")
+            client.send(f"SIZE {filename}\n".encode())
+            file_size = int(client.recv(BUFFER_SIZE).decode())
+            download_file(filename, file_size)
+            
+            # Respond to the server that the file has been downloaded
+            client.send(f"ACK {filename}\n".encode())
         
         # Wait for all threads to complete
         for thread in active_threads:
             thread.join()
         
-        print("All files downloaded successfully!")
+        print("Finished downloading requested files.")
         
         # don't let the terminal window close immediately
         input("Press Enter to exit...")

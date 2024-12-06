@@ -21,6 +21,14 @@ def getFileList():
     
     return fileList
 
+def getFileName():
+    file_list = []
+    with open('files.txt', 'r') as file:
+        for line in file:
+            file_name = line.split()[0]
+            file_list.append(file_name)
+    return file_list
+
 def scanFiles():
     scannedFiles = []
 
@@ -32,6 +40,7 @@ def scanFiles():
     with open(FILELIST, 'w') as list:
         for file in scannedFiles:
             list.write(f"{file} {round(os.path.getsize(os.path.join(FOLDER, file)) / MB, 2)}MB\n")
+        
     
     return scannedFiles
 
@@ -46,10 +55,7 @@ def sendFileChunk(client, file, offset, chunk):
             totalSent += sent
             f.seek(offset + totalSent)
 
-def processClient(server, client, addr):
-    #print(f"Client {addr} connected successfully.")
-    
- 
+def processClient(server, client, addr, files):
     buffer = ""
     delimiter = "\n"
     while True:
@@ -69,7 +75,7 @@ def processClient(server, client, addr):
                 elif request == 'FILELIST':
                     files = getFileList()
                     client.sendall('\n'.join(files).encode(FORMAT) + delimiter.encode(FORMAT))
-                    
+                
                 elif request.startswith('SIZE'):
                     fileName = request.split()[1]
                     client.send(str(os.path.getsize(os.path.join(FOLDER, fileName))).encode(FORMAT) + delimiter.encode(FORMAT))
@@ -105,7 +111,7 @@ def processClient(server, client, addr):
     
 
 def run():
-    scanFiles()
+    files = scanFiles()
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
     server.listen(MAX_CONNECTIONS)
@@ -115,7 +121,7 @@ def run():
         while True:
             conn, addr = server.accept()
 
-            clientThread = threading.Thread(target=processClient, args=(server, conn, addr))  
+            clientThread = threading.Thread(target=processClient, args=(server, conn, addr, files))  
             clientThread.start()
     finally:
         server.close()
