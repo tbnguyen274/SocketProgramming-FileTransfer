@@ -14,10 +14,9 @@ import pickle
 yêu cầu server gửi từng chunk cho mỗi kết nối.
 - Sau khi tải xong các chunks, nối các phần đã download của một file thành file hoàn chỉnh. (kiểm tra bằng cách kiểm tra tổng
 dung lượng và mở file thành công)
-
 '''
-
-HOST = '127.0.0.1'
+HOST = '192.168.1.192'
+# HOST = socket.gethostbyname(socket.gethostname())
 PORT = 12345
 ADDR = (HOST, PORT)
 NUM_OF_CHUNKS = 4
@@ -26,8 +25,8 @@ BUFFER_SIZE = 4096
 FORMAT = "utf-8"
 
 # Get the directory of the current script
-CURRENT_WORKSPACE = os.path.dirname(os.path.abspath(__file__))
-OUTPUT_DIR = os.path.join(CURRENT_WORKSPACE, "output")
+CUR_PATH = os.getcwd()
+OUTPUT_DIR = os.path.join(CUR_PATH, "output")
 
 # Active download threads
 active_threads = []
@@ -139,7 +138,7 @@ def main():
         input_files = []
 
         # Construct the full path to the input file
-        input_file_path = os.path.join(CURRENT_WORKSPACE, "input.txt")
+        input_file_path = os.path.join(CUR_PATH, "input.txt")
 
         # Read the list of files to download
         with open(input_file_path, "r") as f:

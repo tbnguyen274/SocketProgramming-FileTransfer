@@ -2,13 +2,14 @@ import socket
 import os
 import threading
 
-HOST = '127.0.0.1'
+HOST = '0.0.0.0'
 PORT = 12345
-FOLDER = './files'
-FILELIST = './files.txt'
+CUR_PATH = os.getcwd()
+FOLDER = os.path.join(CUR_PATH, 'files')
+FILELIST = os.path.join(CUR_PATH, 'filelist.txt')
 BUFFER = 4096
 FORMAT = 'utf-8'
-MB = 1048576
+MB = 1024 * 1024
 MAX_CONNECTIONS = 10
 
 def getFileList():
