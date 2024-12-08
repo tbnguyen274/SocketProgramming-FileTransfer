@@ -35,16 +35,21 @@ active_threads = []
 is_running = True
 
 # Signal handler for graceful shutdown
-def signal_handler(sig, frame):
+def signal_handler(sig, frame, client):
     global is_running
     print("Shutting down...")
     is_running = False
+    
+    # Send the exit signal to the server
+    client.send("EXIT\n".encode())
+    client.close()
+    
     for thread in active_threads:
         thread.join()  # Wait for all threads to finish
     sys.exit(0)
 
 # Register signal handler
-signal.signal(signal.SIGINT, signal_handler)
+#signal.signal(signal.SIGINT, signal_handler)
 
 # Function to fetch the file list from the server
 def fetch_file_list(client):
@@ -192,9 +197,11 @@ def monitor_input_file(client, available_files):
 def main():
     global is_running
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
-        client.connect(ADDR)
-        
+        # Register signal handler for Ctrl+C
+        signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, client))
+                
         # Send the connect signal to the server
+        client.connect(ADDR)
         client.send("CONNECT\n".encode())
         
         # Receive the welcome message from the server
@@ -208,21 +215,17 @@ def main():
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
         # Start a thread to download new files
-        monitor_thread = threading.Thread(target=monitor_input_file, args=(client, available_files))
-        monitor_thread.start()
+        # monitor_thread = threading.Thread(target=monitor_input_file, args=(client, available_files))
+        # monitor_thread.start()
 
         # Keep main thread running
-        while is_running:
-            time.sleep(1)
+        # while is_running:
+        #     time.sleep(1)
 
         # Wait monitor finish
-        monitor_thread.join()
-
-        print("Exiting program...")
+        # monitor_thread.join()
         
-        # Send the exit signal to the server
-        client.send("EXIT\n".encode())
-        client.close()
+        monitor_input_file(client, available_files)
 
 if __name__ == "__main__":
     main()
