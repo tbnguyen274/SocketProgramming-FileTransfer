@@ -4,10 +4,10 @@ import threading
 
 HOST = '0.0.0.0'
 PORT = 12345
-CUR_PATH = os.getcwd()
+CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 FOLDER = os.path.join(CUR_PATH, 'files')
 FILELIST = os.path.join(CUR_PATH, 'filelist.txt')
-BUFFER = 4096
+BUFFER = 1024
 FORMAT = 'utf-8'
 MB = 1024 * 1024
 MAX_CONNECTIONS = 10

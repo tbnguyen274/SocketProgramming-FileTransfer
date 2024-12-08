@@ -16,16 +16,16 @@ yêu cầu server gửi từng chunk cho mỗi kết nối.
 dung lượng và mở file thành công)
 '''
 HOST = '192.168.1.192'
-# HOST = socket.gethostbyname(socket.gethostname())
+HOST = socket.gethostbyname(socket.gethostname())
 PORT = 12345
 ADDR = (HOST, PORT)
 NUM_OF_CHUNKS = 4
 MAX_RETRIES = 3
-BUFFER_SIZE = 4096
+BUFFER_SIZE = 1024
 FORMAT = "utf-8"
 
 # Get the directory of the current script
-CUR_PATH = os.getcwd()
+CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(CUR_PATH, "output")
 
 # Active download threads
@@ -46,7 +46,18 @@ def fetch_file_list(client):
     
     return file_names
         
-        
+print_lock = threading.Lock()
+def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
+    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
+    filled_length = int(length * iteration // total)
+    bar = fill * filled_length + '-' * (length - filled_length)
+    with print_lock:
+        sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
+        sys.stdout.flush()
+        if iteration == total:
+            sys.stdout.write('\n')
+
+
 # Function to download a chunk
 def download_chunk(filename, order, offset, chunk_size, part_id, progress):
     retry_count = 0
@@ -73,6 +84,7 @@ def download_chunk(filename, order, offset, chunk_size, part_id, progress):
                         chunk_file.write(packet)
                         total_received += len(packet)
                         progress[part_id] = total_received
+                        print_progress_bar(total_received, chunk_size, prefix=f'Chunk {part_id + 1}', suffix='Complete', length=50)
 
                 break
         except Exception as e:
