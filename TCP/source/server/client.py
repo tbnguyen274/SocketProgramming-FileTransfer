@@ -5,7 +5,7 @@ import threading
 import os
 import time
 import sys
-import pickle
+import signal
 
 '''
 - Kết nối đến Server, nhận thông tin danh sách các file từ server và hiển thị trên màn hình.
@@ -31,6 +31,21 @@ OUTPUT_DIR = os.path.join(CUR_PATH, "output")
 # Active download threads
 active_threads = []
 
+# Flag for program state
+is_running = True
+
+# Signal handler for graceful shutdown
+def signal_handler(sig, frame):
+    global is_running
+    print("\Shutting down...")
+    is_running = False
+    for thread in active_threads:
+        thread.join()  # Wait for all threads to finish
+    sys.exit(0)
+
+# Register signal handler
+signal.signal(signal.SIGINT, signal_handler)
+
 # Function to fetch the file list from the server
 def fetch_file_list(client):
     client.send("FILELIST\n".encode(FORMAT))
@@ -39,26 +54,20 @@ def fetch_file_list(client):
     print(f"{file_list}")
     
     file_array = file_list.split("\n")
-    file_names = []
-    for file in file_array:
-        if file.strip():  # Check if the line is not empty
-            file_names.append(file.split()[0])
+    file_names = [file.split()[0] for file in file_array if file.strip()]
     
     return file_names
-        
-print_lock = threading.Lock()
-def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, length=50, fill='#'):
-    percent = ("{0:." + str(decimals) + "f}").format(100 * (iteration / float(total)))
-    filled_length = int(length * iteration // total)
-    bar = fill * filled_length + '-' * (length - filled_length)
-    with print_lock:
-        sys.stdout.write(f'\r{prefix} |{bar}| {percent}% {suffix}')
-        sys.stdout.flush()
-        if iteration == total:
-            sys.stdout.write('\n')
-
 
 # Function to download a chunk
+def display_chunk_progress(progress, filename):
+    progress_str = []
+    for part_id, chunk in enumerate(progress):
+        downloaded = chunk["downloaded"]
+        total = chunk["total"]
+        percent_complete = (downloaded / total) * 100 if total > 0 else 0
+        progress_str.append(f"part {part_id + 1} .... {percent_complete:.0f}%")
+    print(f"\rDownloading {filename}: " + " | ".join(progress_str), end="")
+
 def download_chunk(filename, order, offset, chunk_size, part_id, progress):
     retry_count = 0
     while retry_count < MAX_RETRIES:
@@ -83,33 +92,34 @@ def download_chunk(filename, order, offset, chunk_size, part_id, progress):
                             break
                         chunk_file.write(packet)
                         total_received += len(packet)
-                        progress[part_id] = total_received
-                        print_progress_bar(total_received, chunk_size, prefix=f'Chunk {part_id + 1}', suffix='Complete', length=50)
+                        progress[part_id]["downloaded"] = total_received
+                        display_chunk_progress(progress, filename)  # Update progress for all chunks
 
                 break
         except Exception as e:
             retry_count += 1
             if retry_count == MAX_RETRIES:
-                print(f"Error downloading chunk {part_id} of {filename}: {e}")
+                print(f"\nError downloading chunk {part_id} of {filename}: {e}")
             else:
-                print(f"Retrying chunk {part_id} of {filename}...")
-    
-# Function to download a file
+                print(f"\nRetrying chunk {part_id} of {filename}...")
+
 def download_file(filename, file_size):
     chunk_size = file_size // NUM_OF_CHUNKS
     remainder = file_size % NUM_OF_CHUNKS
-    progress = [0] * NUM_OF_CHUNKS
+    progress = [{"downloaded": 0, "total": chunk_size} for _ in range(NUM_OF_CHUNKS)]
+
+    if remainder:
+        progress[-1]["total"] += remainder  # Add remainder to the last chunk
+
     threads = []
 
     # Start threads for each chunk
     for i in range(NUM_OF_CHUNKS):
         offset = i * chunk_size
         order = i + 1
-        if i == NUM_OF_CHUNKS - 1:
-            chunk_size += remainder
-        thread = threading.Thread(target=download_chunk, args=(filename, order, offset, chunk_size, i, progress))
+        thread = threading.Thread(target=download_chunk, args=(filename, order, offset, progress[i]["total"], i, progress))
         threads.append(thread)
-        active_threads.append(thread)  # Track active threads
+        active_threads.append(thread)
         thread.start()
 
     # Wait for all threads to complete
@@ -127,13 +137,60 @@ def download_file(filename, file_size):
                         final_file.write(chunk_file.read())
                     os.remove(part_filename)  # Clean up chunk files
                 except IOError as e:
-                    print(f"Error processing chunk {i}: {e}")
+                    print(f"\nError processing chunk {i}: {e}")
     except IOError as e:
-        print(f"Error creating final file: {e}")
+        print(f"\nError creating final file: {e}")
 
-    print(f"{filename} downloaded successfully!")
+    print(f"\n{filename} downloaded successfully!\n")
+
+
+# Function to monitor the input file for new downloads
+def monitor_input_file(client, available_files):
+    downloaded_files = set()
+    unavailable_files = set()
+
+    while is_running:
+        try:
+            # Construct the full path to the input file
+            input_file_path = os.path.join(CUR_PATH, "input.txt")
+
+            # Read the list of files to download
+            input_files = []
+            with open(input_file_path, "r") as f:
+                for file in f:
+                    input_files.append(file.strip())
+
+            print(f"Checking for new files to download...\n")
+            
+            # Check new file to download
+            for filename in input_files:
+                if filename in downloaded_files:
+                    continue  # Skip downloaded files
+
+                if filename not in available_files:
+                    if filename not in unavailable_files:
+                        print(f"{filename} is not available on the server.\n")
+                        unavailable_files.add(filename)
+                    continue  # Skip unavailable files
+                
+                print(f"Request to download {filename}... detected.")
+                client.send(f"SIZE {filename}\n".encode())
+                file_size = int(client.recv(BUFFER_SIZE).decode())
+                download_file(filename, file_size)
+
+                # Respond to the server that the file has been downloaded
+                client.send(f"ACK {filename}\n".encode())
+                downloaded_files.add(filename)
+
+            # Sleep for 5 seconds before checking again
+            time.sleep(5)
+
+        except Exception as e:
+            print(f"Error monitoring input file: {e}")
+            break
 
 def main():
+    global is_running
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
         client.connect(ADDR)
         
@@ -147,49 +204,25 @@ def main():
         # Fetch the file list from the server
         available_files = fetch_file_list(client)
 
-        input_files = []
-
-        # Construct the full path to the input file
-        input_file_path = os.path.join(CUR_PATH, "input.txt")
-
-        # Read the list of files to download
-        with open(input_file_path, "r") as f:
-            for file in f:
-                input_files.append(file.strip())
-        
         # Ensure the output directory exists
         os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-        # Download each file in the list
-        for filename in input_files:
-            # Check if the file exists on the server
-            if filename not in available_files:
-                print(f"{filename} not found on the server.")
-                continue
-            
-            print(f"Downloading {filename}...")
-            client.send(f"SIZE {filename}\n".encode())
-            file_size = int(client.recv(BUFFER_SIZE).decode())
-            download_file(filename, file_size)
-            
-            # Respond to the server that the file has been downloaded
-            client.send(f"ACK {filename}\n".encode())
-        
-        # Wait for all threads to complete
-        for thread in active_threads:
-            thread.join()
-        
-        print("Finished downloading requested files.")
-        
-        # don't let the terminal window close immediately
-        input("Press Enter to exit...")
+        # Start a thread to download new files
+        monitor_thread = threading.Thread(target=monitor_input_file, args=(client, available_files))
+        monitor_thread.start()
+
+        # Keep main thread running
+        while is_running:
+            time.sleep(1)
+
+        # Wait monitor finish
+        monitor_thread.join()
+
+        print("Exiting program...")
         
         # Send the exit signal to the server
         client.send("EXIT\n".encode())
-        
-        # Close the client connection
         client.close()
-        
-    
+
 if __name__ == "__main__":
     main()
