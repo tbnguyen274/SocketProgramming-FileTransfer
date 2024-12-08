@@ -2,7 +2,7 @@ import socket
 import os
 import threading
 
-HOST = '0.0.0.0'
+HOST = '0.0.0.0' # Host listening on all interfaces
 PORT = 12345
 CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 FOLDER = os.path.join(CUR_PATH, 'files')

@@ -15,7 +15,7 @@ yêu cầu server gửi từng chunk cho mỗi kết nối.
 - Sau khi tải xong các chunks, nối các phần đã download của một file thành file hoàn chỉnh. (kiểm tra bằng cách kiểm tra tổng
 dung lượng và mở file thành công)
 '''
-HOST = '192.168.1.192'
+# HOST = '192.168.1.192'
 HOST = socket.gethostbyname(socket.gethostname())
 PORT = 12345
 ADDR = (HOST, PORT)
@@ -37,7 +37,7 @@ is_running = True
 # Signal handler for graceful shutdown
 def signal_handler(sig, frame):
     global is_running
-    print("\Shutting down...")
+    print("Shutting down...")
     is_running = False
     for thread in active_threads:
         thread.join()  # Wait for all threads to finish
