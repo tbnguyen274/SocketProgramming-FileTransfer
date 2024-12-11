@@ -1,0 +1,3 @@
+LeagueClient.exe 26.86MB
+SteamUI.dll 13.21MB
+vldc2.pdf 5.58MB
