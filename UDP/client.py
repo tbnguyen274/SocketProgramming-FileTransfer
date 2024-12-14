@@ -4,11 +4,12 @@ import os
 import time
 import struct
 import sys
+import hashlib
 
 HOST = socket.gethostbyname(socket.gethostname())
 PORT = 12345
 ADDR = (HOST, PORT)
-NUM_OF_CHUNKS = 4
+NUM_OF_CHUNKS = 20
 MAX_RETRIES = 3
 BUFFER_SIZE = 1024
 FORMAT = "utf-8"
@@ -19,7 +20,7 @@ OUTPUT_DIR = os.path.join(CUR_PATH, "output")
 active_threads = []
 
 def checksum(data):
-    return sum(data) % 256
+    return hashlib.md5(data).hexdigest()
 
 def fetch_file_list(client):
     client.sendto("FILELIST\n".encode(FORMAT), ADDR)
@@ -40,35 +41,63 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
     if iteration == total:
         sys.stdout.write('\n')
 
-def download_chunk(filename, order, offset, chunk_size, part_id, progress, total_progress, total_size):
+def download_chunk(client, filename, order, offset, chunk_size, part_id, progress, total_progress, total_size):
     retry_count = 0
     seq_num = 0
     while retry_count < MAX_RETRIES:
         try:
-            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+            #with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+                print(client)
                 client.settimeout(TIMEOUT)
                 request = f"REQUEST {filename} {offset} {chunk_size} {seq_num}\n"
                 client.sendto(request.encode(FORMAT), ADDR)
                 chunk_path = os.path.join(OUTPUT_DIR, f"{filename}.part{part_id}")
                 total_received = 0
+                
                 with open(chunk_path, "wb") as chunk_file:
                     while total_received < chunk_size:
+                        print("Waiting to receive packet...")
+
                         packet, _ = client.recvfrom(BUFFER_SIZE)
-                        packet_checksum = struct.unpack('!I', packet[:4])[0]
-                        packet = packet[4:]
+                        print("Packet received")
+                        print(packet)
+                        
+                        # Extract checksum
+                        packet_checksum = struct.unpack('!32s', packet[:32])[0].decode()
+                        packet = packet[32:]
+                        
+                        # Verify checksum
                         if checksum(packet) != packet_checksum:
-                            continue
+                            print(f"Checksum mismatch in chunk {part_id} of {filename}.")
+                            print(f"Expected: {packet_checksum}")
+                            print(f"Received: {checksum(packet)}")
+                            client.sendto(f"EXIT\n".encode(), ADDR)
+                            break
+                        else:
+                            print("Checksum verified")
+                        
+                        # Extract sequence number
                         received_seq_num = struct.unpack('!I', packet[:4])[0]
                         if received_seq_num != seq_num:
+                            print(f"Out-of-order packet {received_seq_num} received, expected {seq_num}. Retrying...")
                             continue
-                        chunk_file.write(packet[4:])
-                        total_received += len(packet[4:])
-                        progress[part_id] = total_received
-                        total_progress[0] += len(packet[4:])
-                        print_progress_bar(total_progress[0], total_size, prefix='Progress:', suffix='Complete', length=50)
-                        ack = struct.pack('!I', seq_num)
-                        client.sendto(ack, ADDR)
+                        
+                        data = packet[4:]
+                        
+                        # Write data to file
+                        chunk_file.write(data)
+                        total_received += len(data)
+                        print(f"Received packet {seq_num} with size {len(data)}")
+                        # progress[part_id] = total_received
+                        # total_progress[0] += len(data)
+                        # print_progress_bar(total_progress[0], total_size, prefix='Progress:', suffix='Complete', length=50)
+                        
+                        # Send ACK = seq_num + 1
                         seq_num += 1
+                        ack = struct.pack('!I', seq_num)
+                        print(f"Sending ACK {seq_num}")
+                        client.sendto(ack, ADDR)
+                print(f"Chunk {part_id} of {filename} downloaded successfully.")
                 break
         except Exception as e:
             retry_count += 1
@@ -122,21 +151,46 @@ def main():
             for file in f:
                 input_files.append(file.strip())
         os.makedirs(OUTPUT_DIR, exist_ok=True)
-        for filename in input_files:
-            if filename not in available_files:
-                print(f"{filename} not found on the server.")
-                continue
-            print(f"Downloading {filename}...")
-            client.sendto(f"SIZE {filename}\n".encode(FORMAT), ADDR)
-            print("SIZE request sent for", filename)  # Debug statement
-            file_size, _ = client.recvfrom(BUFFER_SIZE)
-            print("SIZE response received for", filename)
-            file_size = int(file_size.decode())
-            print("File size:", file_size)
-            download_file(filename, file_size)
-            client.sendto(f"ACK {filename}\n".encode(), ADDR)
+        
+        # for filename in input_files:
+        #     if filename not in available_files:
+        #         print(f"{filename} not found on the server.")
+        #         continue
+        #     print(f"Downloading {filename}...")
+            
+        #     client.sendto(f"SIZE {filename}\n".encode(FORMAT), ADDR)
+        #     print("SIZE request sent for", filename)  # Debug statement
+        #     file_size, _ = client.recvfrom(BUFFER_SIZE)
+        #     print("SIZE response received for", filename)
+        #     file_size = int(file_size.decode())
+        #     print("File size:", file_size)
+            
+        #     download_file(filename, file_size)
+        
+        # test dowwnload one chunk
+        filename = input_files[0]
+        client.sendto(f"SIZE {filename}\n".encode(FORMAT), ADDR)
+        print("SIZE request sent for", filename)
+        file_size, _ = client.recvfrom(BUFFER_SIZE)
+        print("SIZE response received for", filename)
+        file_size = int(file_size.decode())
+        print("File size:", file_size)
+        
+        active_threads = []
+        # Calculate chunk size
+        chunk_size = file_size // NUM_OF_CHUNKS
+        remainder = file_size % NUM_OF_CHUNKS
+        offset = 0
+        order = 1
+        if remainder > 0:
+            chunk_size += remainder
+        thread = threading.Thread(target=download_chunk, args=(client, filename, order, offset, chunk_size, 0, None, None, file_size))
+        thread.start()
+        active_threads.append(thread)
+        
         for thread in active_threads:
             thread.join()
+        
         print("Finished downloading requested files.")
         input("Press Enter to exit...")
         client.sendto("EXIT\n".encode(), ADDR)
