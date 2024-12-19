@@ -15,7 +15,7 @@ FORMAT = 'utf-8'
 MB = 1024 * 1024
 TIMEOUT = 10  # Timeout for retransmissions
 
-def getFileList():
+def get_file_list():
     fileList = []
     with open(FILELIST, 'r') as list:
         for file in list:
@@ -23,7 +23,7 @@ def getFileList():
                 fileList.append(file.strip())
     return fileList
 
-def scanFiles():
+def scan_available_files():
     scannedFiles = []
     folder = os.listdir(FOLDER)
     for file in folder:
@@ -37,7 +37,7 @@ def scanFiles():
 def calculate_checksum(data):
     return hashlib.md5(data).hexdigest()
 
-def sendFileChunk(server, client_addr, file, offset, chunk, seq_num, request_id):
+def send_file_chunk(server, client_addr, file, offset, chunk, seq_num, request_id):
     with open(os.path.join(FOLDER, file), 'rb') as f:
         totalSent = 0
         f.seek(offset)
@@ -81,7 +81,7 @@ def sendFileChunk(server, client_addr, file, offset, chunk, seq_num, request_id)
 
 active_requests = set()
 
-def processClient(server, client_addr, files):
+def handle_client(server, client_addr, files):
     buffer = ""
     delimiter = "\n"
     while True:
@@ -95,7 +95,7 @@ def processClient(server, client_addr, files):
                 request, buffer = buffer.split(delimiter, 1)
                 print(f"Received request from {client_addr}: {request}")
                 if request == 'FILELIST':
-                    files = getFileList()
+                    files = get_file_list()
                     server.sendto('\n'.join(files).encode(FORMAT) + delimiter.encode(FORMAT), client_addr)
                 elif request.startswith('SIZE'):
                     fileName = request.split()[1]
@@ -113,7 +113,7 @@ def processClient(server, client_addr, files):
                     
                     if os.path.exists(os.path.join(FOLDER, fileName)) and request_id not in active_requests:
                         active_requests.add(request_id)
-                        threading.Thread(target=sendFileChunk, args=(server, client_addr, fileName, offset, chunk, seq_num, request_id)).start()
+                        threading.Thread(target=send_file_chunk, args=(server, client_addr, fileName, offset, chunk, seq_num, request_id)).start()
                 elif request.startswith("EXIT"):
                     print(f"Client {client_addr} disconnected.\n")
                     return
@@ -122,7 +122,7 @@ def processClient(server, client_addr, files):
             break
 
 def run():
-    files = scanFiles()
+    files = scan_available_files()
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server.bind((HOST, PORT))
     print(f"Server is running on port: {PORT}.\n")
@@ -132,7 +132,7 @@ def run():
             print(f"Received data from {addr}: {data.decode(FORMAT)}")
             if data.decode(FORMAT).startswith("CONNECT"):
                 server.sendto("CONNECTED".encode(FORMAT), addr)
-            processClient(server, addr, files)
+            handle_client(server, addr, files)
     finally:
         server.close()
 
