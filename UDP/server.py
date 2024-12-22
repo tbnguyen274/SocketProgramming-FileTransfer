@@ -52,14 +52,14 @@ def send_file_chunk(server, client_addr, file, offset, chunk, seq_num, request_i
             checksum = checksum.encode() if isinstance(checksum, str) else checksum
             packet = struct.pack('!32s', checksum) + header + part
             print(f"Sending packet {seq_num} with size {len(packet)}")
-            print(packet)
+            # print(packet)
             
             # Send packet
+            print(client_addr)
             server.sendto(packet, client_addr)
             print(f"Sent packet {seq_num}")
             totalSent += len(part)
-            ack, _ = server.recvfrom(BUFFER)
-            print(f"Received ACK {ack}")
+  
             
             # Wait for ACK
             try:
@@ -67,10 +67,12 @@ def send_file_chunk(server, client_addr, file, offset, chunk, seq_num, request_i
                 ack, _ = server.recvfrom(BUFFER)
                 print(f"Received ACK {ack}")
                 ack_number = struct.unpack('!I', ack)[0]
-                
+                print(f"ACK number, seq_num: {ack_number}, {seq_num}")
                 if ack_number == seq_num + 1:
                     seq_num += 1
+                    print(f"ACK {ack_number} received")
                 else:
+                    print(f"Incorrect ACK received, resending packet")
                     raise Exception("Incorrect ACK received, resending packet")
             except:
                 f.seek(offset + totalSent - len(part))
@@ -101,21 +103,23 @@ def handle_client(server, client_addr, files):
                     fileName = request.split()[1]
                     print(f"Request for file size: {fileName}")
                     server.sendto(str(os.path.getsize(os.path.join(FOLDER, fileName))).encode(FORMAT) + delimiter.encode(FORMAT), client_addr)
-                elif request.startswith('REQUEST'):
-                    info = request.split()
-                    fileName = info[1]
-                    offset = int(info[2])
-                    chunk = int(info[3])
-                    seq_num = int(info[4])
-                    print(f"Request for file chunk: {fileName} {offset} {chunk} {seq_num}")
-                    request_id = (client_addr, fileName, offset, chunk, seq_num)
-                    print(f"Request for file chunk: {fileName} {offset} {chunk} {seq_num}")
+                # elif request.startswith('REQUEST'):
+                #     info = request.split()
+                #     fileName = info[1]
+                #     offset = int(info[2])
+                #     chunk = int(info[3])
+                #     seq_num = int(info[4])
+                #     print(f"Request for file chunk: {fileName} {offset} {chunk} {seq_num}")
+                #     request_id = (client_addr, fileName, offset, chunk, seq_num)
+                #     print(f"Request for file chunk: {fileName} {offset} {chunk} {seq_num}")
                     
-                    if os.path.exists(os.path.join(FOLDER, fileName)) and request_id not in active_requests:
-                        active_requests.add(request_id)
-                        threading.Thread(target=send_file_chunk, args=(server, client_addr, fileName, offset, chunk, seq_num, request_id)).start()
+                #     if os.path.exists(os.path.join(FOLDER, fileName)) and request_id not in active_requests:
+                #         active_requests.add(request_id)
+                #         threading.Thread(target=send_file_chunk, args=(server, client_addr, fileName, offset, chunk, seq_num, request_id)).start()
+                
+                
                 elif request.startswith("EXIT"):
-                    print(f"Client {client_addr} disconnected.\n")
+                    # print(f"Client {client_addr} disconnected.\n")
                     return
         except Exception as e:
             print(f"Error processing request from {client_addr}: {e}")
@@ -127,12 +131,39 @@ def run():
     server.bind((HOST, PORT))
     print(f"Server is running on port: {PORT}.\n")
     try:
-        while True:
+        # while True:
             data, addr = server.recvfrom(BUFFER)
             print(f"Received data from {addr}: {data.decode(FORMAT)}")
             if data.decode(FORMAT).startswith("CONNECT"):
                 server.sendto("CONNECTED".encode(FORMAT), addr)
-            handle_client(server, addr, files)
+            
+            data, addr = server.recvfrom(BUFFER)
+            if data.decode(FORMAT).startswith("HANDLE"):
+                print(f"Client {addr} connected.\n")
+                handle_client(server, addr, files)
+            
+            # TODO: Implement file chunk requests
+            while True:
+                request, addr = server.recvfrom(BUFFER)
+                if request.decode(FORMAT).startswith('EXIT'):
+                    print(f"Client {addr} disconnected.\n")
+                    break
+                
+                info = request.split()
+                fileName = info[1].decode(FORMAT)
+                offset = int(info[2])
+                chunk = int(info[3])
+                seq_num = int(info[4])
+                print(f"Request for file chunk: {fileName} {offset} {chunk} {seq_num}")
+                request_id = (addr, fileName, offset, chunk, seq_num)
+                
+                if os.path.exists(os.path.join(FOLDER, fileName)) and request_id not in active_requests:
+                    active_requests.add(request_id)
+                    send_file_chunk(server, addr, fileName, offset, chunk, seq_num, request_id)
+                else:
+                    print(f"File {fileName} not found or request already active.")
+                    break
+                
     finally:
         server.close()
 

@@ -9,7 +9,7 @@ import hashlib
 HOST = socket.gethostbyname(socket.gethostname())
 PORT = 12345
 ADDR = (HOST, PORT)
-NUM_OF_CHUNKS = 20
+NUM_OF_CHUNKS = 23
 MAX_RETRIES = 3
 BUFFER_SIZE = 1024
 FORMAT = "utf-8"
@@ -56,11 +56,10 @@ def download_chunk(client, filename, order, offset, chunk_size, part_id, progres
                 
                 with open(chunk_path, "wb") as chunk_file:
                     while total_received < chunk_size:
-                        print("Waiting to receive packet...")
+                        #print("Waiting to receive packet...")
 
                         packet, _ = client.recvfrom(BUFFER_SIZE)
-                        print("Packet received")
-                        print(packet)
+                        #print(packet)
                         
                         # Extract checksum
                         packet_checksum = struct.unpack('!32s', packet[:32])[0].decode()
@@ -74,7 +73,8 @@ def download_chunk(client, filename, order, offset, chunk_size, part_id, progres
                             client.sendto(f"EXIT\n".encode(), ADDR)
                             break
                         else:
-                            print("Checksum verified")
+                            # print("Checksum verified")
+                            pass
                         
                         # Extract sequence number
                         received_seq_num = struct.unpack('!I', packet[:4])[0]
@@ -92,11 +92,18 @@ def download_chunk(client, filename, order, offset, chunk_size, part_id, progres
                         # total_progress[0] += len(data)
                         # print_progress_bar(total_progress[0], total_size, prefix='Progress:', suffix='Complete', length=50)
                         
-                        # Send ACK = seq_num + 1
-                        seq_num += 1
-                        ack = struct.pack('!I', seq_num)
-                        print(f"Sending ACK {seq_num}")
+                        # Send ACK
+                        ack = struct.pack('!I', seq_num + 1)
                         client.sendto(ack, ADDR)
+                        print(f"Sent ACK {seq_num + 1}")
+                        seq_num += 1
+                        
+                        print(total_received, chunk_size)
+                        
+                        
+                        
+                        
+                        
                 print(f"Chunk {part_id} of {filename} downloaded successfully.")
                 break
         except Exception as e:
@@ -144,6 +151,8 @@ def main():
         client.sendto("CONNECT\n".encode(FORMAT), ADDR)
         welcome, _ = client.recvfrom(BUFFER_SIZE)
         print(welcome.decode())
+        
+        client.sendto("HANDLE\n".encode(FORMAT), ADDR)
         available_files = fetch_file_list(client)
         input_files = []
         input_file_path = os.path.join(CUR_PATH, "input.txt")
@@ -167,7 +176,8 @@ def main():
             
         #     download_file(filename, file_size)
         
-        # test dowwnload one chunk
+        # TODO: Downloading a single file
+        
         filename = input_files[0]
         client.sendto(f"SIZE {filename}\n".encode(FORMAT), ADDR)
         print("SIZE request sent for", filename)
@@ -175,6 +185,7 @@ def main():
         print("SIZE response received for", filename)
         file_size = int(file_size.decode())
         print("File size:", file_size)
+        client.sendto(f"EXIT\n".encode(), ADDR)
         
         active_threads = []
         # Calculate chunk size
@@ -182,14 +193,32 @@ def main():
         remainder = file_size % NUM_OF_CHUNKS
         offset = 0
         order = 1
-        if remainder > 0:
-            chunk_size += remainder
-        thread = threading.Thread(target=download_chunk, args=(client, filename, order, offset, chunk_size, 0, None, None, file_size))
-        thread.start()
-        active_threads.append(thread)
+
+        for i in range(NUM_OF_CHUNKS):
+            offset = i * chunk_size
+            order = i + 1
+            if i == NUM_OF_CHUNKS - 1:
+                chunk_size += remainder
+            download_chunk(client, filename, order, offset, chunk_size, i, None, None, file_size)
         
-        for thread in active_threads:
-            thread.join()
+        # Announce completion
+        client.sendto(f"EXIT\n".encode(), ADDR)
+        
+        path = os.path.join(OUTPUT_DIR, filename)
+        try:
+            with open(path, "wb") as final_file:
+                for i in range(NUM_OF_CHUNKS):
+                    part_filename = os.path.join(OUTPUT_DIR, f"{filename}.part{i}")
+                    try:
+                        with open(part_filename, "rb") as chunk_file:
+                            final_file.write(chunk_file.read())
+                        os.remove(part_filename)
+                    except IOError as e:
+                        print(f"Error processing chunk {i}: {e}")
+        except IOError as e:
+            print(f"Error creating final file: {e}")
+        print(f"{filename} downloaded successfully!")
+            
         
         print("Finished downloading requested files.")
         input("Press Enter to exit...")
