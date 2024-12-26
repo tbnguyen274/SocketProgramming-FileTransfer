@@ -105,11 +105,12 @@ def download_chunk(client, filename, order, offset, chunk_size, part_id, progres
 
                     chunk_file.write(data)
                     total_received += len(data)
-                    print(f"Received packet {seq_num} with size {len(data)}")
+                    # print(f"Received packet {seq_num} with size {len(data)}")
                     progress[part_id] = total_received
                     total_progress[0] = sum(progress)
                     
                     seq_num += 1
+                
 
                 print(f"Chunk {part_id} of {filename} downloaded successfully.")
                 break
@@ -191,24 +192,9 @@ def main():
         os.makedirs(OUTPUT_DIR, exist_ok=True)
         
         filename = input_files[0]
-        msg_size = make_packet(0, f"SIZE {filename}\n".encode())
-        ack = send_rdt(client, ADDR, msg_size)
-        if ack != 1:
-            print("Failed to fetch file size.")
-            return
-        
-        file_size, _ = client.recvfrom(BUFFER_SIZE)
-        file_size = int(file_size.decode())
-        msg_exit = make_packet(0, b"EXIT\n")
-        ack = send_rdt(client, ADDR, msg_exit)
-        if ack != 1:
-            print("Failed to exit the server.")
-            return
-        else:
-            print(f"File size of {filename}: {file_size}")
 
         print("Downloading requested files...")
-        download_file(client, filename, file_size)
+        download_file(client, filename)
 
         print("Finished downloading requested files.")
         input("Press Enter to exit...")
