@@ -110,11 +110,22 @@ def handle_client(server, client_addr, files):
                 print(f"Received request from {client_addr}: {request}")
                 if request == 'FILELIST':
                     files = get_file_list()
-                    server.sendto('\n'.join(files).encode(FORMAT) + delimiter.encode(FORMAT), client_addr)
+                    msg_file_list = make_packet(0, '\n'.join(files).encode(FORMAT) + delimiter.encode(FORMAT))
+                    ack = send_rdt(server, msg_file_list, client_addr)
+                    if ack != 1:
+                        print("Failed to send file list.")
+                        break
+                
                 elif request.startswith('SIZE'):
                     fileName = request.split()[1]
                     print(f"Request for file size: {fileName}")
-                    server.sendto(str(os.path.getsize(os.path.join(FOLDER, fileName))).encode(FORMAT) + delimiter.encode(FORMAT), client_addr)
+                    data = str(os.path.getsize(os.path.join(FOLDER, fileName))).encode(FORMAT) + delimiter.encode(FORMAT)
+                    msg_size = make_packet(0, data)
+                    ack = send_rdt(server, msg_size, client_addr)
+                    if ack != 1:
+                        print("Failed to send file size.")
+                        break
+                
                 elif request.startswith("REQUEST"):
                     info = request.split()
                     fileName = info[1]
@@ -141,12 +152,18 @@ def run():
     files = scan_available_files()
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server.bind((HOST, PORT))
+    print(socket.gethostbyname(socket.gethostname()))
     print(f"Server is running on port: {PORT}.\n")
     try:
         data, addr = recv_rdt(server)
         if data.decode(FORMAT) == "CONNECT":
             print(f"Connection request from {addr}")
-            server.sendto("CONNECTED".encode(FORMAT), addr)
+            welcome = "Welcome to the server!\n".encode(FORMAT)
+            msg_welcome = make_packet(0, welcome)
+            ack = send_rdt(server, msg_welcome, addr)
+            if ack != 1:
+                print(f"Failed to send welcome message to {addr}")
+                return
         else:
             print(f"Invalid connection request from {addr}")
             return

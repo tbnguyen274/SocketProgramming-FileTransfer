@@ -63,8 +63,8 @@ def fetch_file_list(client):
     if ack != 1:
         print("Failed to fetch file list.")
         return
-    file_list, _ = client.recvfrom(BUFFER_SIZE)
-    file_list = file_list.decode(FORMAT)
+    file_list, _ = recv_rdt(client)
+    file_list = file_list.decode()
     
     print("Available files on the server:")
     print(f"{file_list}")
@@ -137,7 +137,7 @@ def main():
             return
         else:
             print("Connected to the server.")
-        welcome, _ = client.recvfrom(BUFFER_SIZE)
+        welcome, _ = recv_rdt(client)
         print(welcome.decode())
         
         handle_msg = make_packet(1, b"HANDLE")
@@ -174,7 +174,7 @@ def main():
                 print("Failed to fetch file size.")
                 return
             
-            file_size, _ = client.recvfrom(BUFFER_SIZE)
+            file_size, _ = recv_rdt(client)
             file_size = int(file_size.decode())
             print(f"Size of {filename}: {file_size}")
             
