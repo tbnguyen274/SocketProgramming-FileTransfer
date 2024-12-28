@@ -5,6 +5,7 @@ import struct
 import sys
 import hashlib
 import sys
+from utils import *
 
 HOST = socket.gethostbyname(socket.gethostname())
 HOST = '192.168.1.35'
@@ -20,43 +21,6 @@ CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(CUR_PATH, "output")
 active_threads = []
 
-def checksum(data):
-    return hashlib.md5(data).hexdigest()
-
-def send_rdt(client, addr, packet):
-    while True:
-        client.sendto(packet, addr)
-        try:
-            client.settimeout(TIMEOUT)
-            ack, _ = client.recvfrom(BUFFER_SIZE)
-            ack_number = struct.unpack('!I', ack)[0]
-            return ack_number
-        except socket.timeout:
-            print("Timeout, resending packet")
-
-def recv_rdt(client):
-    while True:
-        try:
-            data, addr = client.recvfrom(BUFFER_SIZE)
-            packet_checksum = struct.unpack('!32s', data[:32])[0].decode()
-            data = data[32:]
-            if checksum(data) == packet_checksum:
-                seq_num = struct.unpack('!I', data[:4])[0]
-                ack = struct.pack('!I', seq_num + 1)
-                client.sendto(ack, addr)
-                data = data[4:]
-                return data, addr
-            else:
-                print("Checksum mismatch, discarding packet")
-        except socket.timeout:
-            continue
-
-def make_packet(seq_num, data):
-    header = struct.pack('!I', seq_num)
-    checksum_value = checksum(header + data)
-    checksum_value = checksum_value.encode() if isinstance(checksum_value, str) else checksum_value
-    packet = struct.pack('!32s', checksum_value) + header + data
-    return packet
 
 def fetch_file_list(client):
     msg_file_list = make_packet(0, b"FILE_LIST\n")
