@@ -7,13 +7,14 @@ import hashlib
 import sys
 
 HOST = socket.gethostbyname(socket.gethostname())
+HOST = '192.168.1.35'
 PORT = 12345
 ADDR = (HOST, PORT)
 NUM_OF_CHUNKS = 4
 MAX_RETRIES = 3
-BUFFER_SIZE = 4096
+BUFFER_SIZE = 1024 * 4
 FORMAT = "utf-8"
-TIMEOUT = 1  # Timeout for retransmissions
+TIMEOUT = 3  # Timeout for retransmissions
 
 CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(CUR_PATH, "output")
@@ -58,7 +59,7 @@ def make_packet(seq_num, data):
     return packet
 
 def fetch_file_list(client):
-    msg_file_list = make_packet(0, b"FILELIST\n")
+    msg_file_list = make_packet(0, b"FILE_LIST\n")
     ack = send_rdt(client, ADDR, msg_file_list)
     if ack != 1:
         print("Failed to fetch file list.")

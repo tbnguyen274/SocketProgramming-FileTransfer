@@ -8,15 +8,16 @@ HOST = '0.0.0.0'
 PORT = 12345
 CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 FOLDER = os.path.join(CUR_PATH, 'files')
-FILELIST = os.path.join(CUR_PATH, 'filelist.txt')
-BUFFER = 1024
+FILE_LIST = os.path.join(CUR_PATH, 'filelist.txt')
+BUFFER = 1024 * 4
 FORMAT = 'utf-8'
 MB = 1024 * 1024
-TIMEOUT = 10  # Timeout for retransmissions
+TIMEOUT = 3  # Timeout for retransmissions
 
 def get_file_list():
     fileList = []
-    with open(FILELIST, 'r') as list:
+    scan_available_files()
+    with open(FILE_LIST, 'r') as list:
         for file in list:
             if file:
                 fileList.append(file.strip())
@@ -28,10 +29,9 @@ def scan_available_files():
     for file in folder:
         if os.path.isfile(os.path.join(FOLDER, file)):
             scannedFiles.append(file)
-    with open(FILELIST, 'w') as list:
+    with open(FILE_LIST, 'w') as list:
         for file in scannedFiles:
             list.write(f"{file} {round(os.path.getsize(os.path.join(FOLDER, file)) / MB, 2)}MB\n")
-    return scannedFiles
 
 def calculate_checksum(data):
     return hashlib.md5(data).hexdigest()
@@ -81,10 +81,7 @@ def send_file_chunk(server, client_addr, file, offset, chunk, seq_num, request_i
             if not part:
                 break
             
-            packet = make_packet(seq_num, part)
-            print(packet)
-            print(f"Sending packet {seq_num} with size {len(packet)}")
-            
+            packet = make_packet(seq_num, part)            
             ack_number = send_rdt(server, packet, client_addr)
             if ack_number == seq_num + 1:
                 seq_num += 1
@@ -96,7 +93,7 @@ def send_file_chunk(server, client_addr, file, offset, chunk, seq_num, request_i
 
 active_requests = set()
 
-def handle_client(server, client_addr, files):
+def handle_client(server, client_addr):
     buffer = ""
     delimiter = "\n"
     while True:
@@ -109,13 +106,24 @@ def handle_client(server, client_addr, files):
             while delimiter in buffer:
                 request, buffer = buffer.split(delimiter, 1)
                 print(f"Received request from {client_addr}: {request}")
-                if request == 'FILELIST':
+                
+                if request == 'FILE_LIST':
                     files = get_file_list()
-                    server.sendto('\n'.join(files).encode(FORMAT) + delimiter.encode(FORMAT), client_addr)
+                    msg_file_list = make_packet(0, '\n'.join(files).encode(FORMAT) + delimiter.encode(FORMAT))
+                    ack = send_rdt(server, msg_file_list, client_addr)
+                    if ack != 1:
+                        print("Failed to send file list.")
+                        break
+                
                 elif request.startswith('SIZE'):
                     fileName = request.split()[1]
                     print(f"Request for file size: {fileName}")
-                    server.sendto(str(os.path.getsize(os.path.join(FOLDER, fileName))).encode(FORMAT) + delimiter.encode(FORMAT), client_addr)
+                    data = str(os.path.getsize(os.path.join(FOLDER, fileName))).encode(FORMAT) + delimiter.encode(FORMAT)
+                    msg_size = make_packet(0, data)
+                    ack = send_rdt(server, msg_size, client_addr)
+                    if ack != 1:
+                        print("Failed to send file size.")
+                        break
                 elif request.startswith("EXIT"):
                     return
         except Exception as e:
@@ -123,15 +131,21 @@ def handle_client(server, client_addr, files):
             break
 
 def run():
-    files = scan_available_files()
     server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     server.bind((HOST, PORT))
-    print(f"Server is running on port: {PORT}.\n")
+    
+    HOST_IP = socket.gethostbyname(socket.gethostname())
+    print(f"Server is running on {HOST_IP} : {PORT}\n")
     try:
         data, addr = recv_rdt(server)
         if data.decode(FORMAT) == "CONNECT":
             print(f"Connection request from {addr}")
-            server.sendto("CONNECTED".encode(FORMAT), addr)
+            welcome = "Welcome to the server!\n".encode(FORMAT)
+            msg_welcome = make_packet(0, welcome)
+            ack = send_rdt(server, msg_welcome, addr)
+            if ack != 1:
+                print(f"Failed to send welcome message to {addr}")
+                return
         else:
             print(f"Invalid connection request from {addr}")
             return
@@ -139,7 +153,7 @@ def run():
         data, addr = recv_rdt(server)
         if data.decode(FORMAT).startswith("HANDLE"):
             print(f"Client {addr} connected.\n")
-            handle_client(server, addr, files)
+            handle_client(server, addr)
         
         while True:
             request, addr = recv_rdt(server)
