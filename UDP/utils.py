@@ -9,7 +9,7 @@ INITIAL_TIMEOUT = 1.0  # Initial timeout in seconds
 ALPHA = 0.125  # Smoothing factor for RTT
 BETA = 0.25  # Smoothing factor for deviation
 MIN_TIMEOUT = 1.0  # seconds
-MAX_TIMEOUT = 60.0  # seconds
+MAX_TIMEOUT = 10.0  # seconds
 
 # Variables for dynamic timeout
 estimated_rtt = INITIAL_TIMEOUT
@@ -73,10 +73,23 @@ def recv_rdt(client, expected_seq, received_packets):
             client.settimeout(timeout_interval)
             data, addr = client.recvfrom(BUFFER_SIZE)
             
+            if len(data) < 32:
+                print("Invalid packet received, sending NACK")
+                nack = struct.pack('!I', -1)
+                client.sendto(nack, addr)
+                continue
+            
             # Unpack and verify checksum
             packet_checksum = struct.unpack('!32s', data[:32])[0].decode()
             payload = data[32:]
             if calculate_checksum(payload) == packet_checksum:
+                
+                if len(payload) < 4:
+                    print("Invalid packet received, sending NACK")
+                    nack = struct.pack('!I', -1)
+                    client.sendto(nack, addr)
+                    continue
+                
                 seq_num = struct.unpack('!I', payload[:4])[0]
                 data = payload[4:]
                 
@@ -116,6 +129,12 @@ def send_rdt(client, addr, packet):
         try:
             client.settimeout(timeout_interval)
             response, _ = client.recvfrom(BUFFER_SIZE)
+            
+            if len(response) < 4:
+                print("Invalid packet received, resending")
+                continue
+            
+            print(response)
             response_number = struct.unpack('!I', response)[0]
             # print(f"Received ACK {response_number}")
             
