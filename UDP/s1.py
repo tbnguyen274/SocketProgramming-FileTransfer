@@ -37,13 +37,13 @@ def scan_available_files():
             list.write(f"{file} {round(os.path.getsize(os.path.join(FOLDER, file)) / MB, 2)}MB\n")
     # return scannedFiles
 
-
-
 def send_file_chunk(server, client_addr, file, offset, chunk, seq_num, request_id):
     with open(os.path.join(FOLDER, file), 'rb') as f:
         totalSent = 0
         f.seek(offset)
         print(seq_num)
+        saved = -2
+        count_saved = 0
         while totalSent < chunk:
             part = f.read(min(BUFFER_SIZE - 4 - 32, chunk - totalSent))
             if not part:
@@ -53,6 +53,14 @@ def send_file_chunk(server, client_addr, file, offset, chunk, seq_num, request_i
             # print(f"Sending packet {seq_num} with size {len(packet)}")
             
             ack_number = send_rdt(server, client_addr, packet)
+            if saved == ack_number:
+                count_saved += 1
+                if count_saved == 1:
+                    exit()
+            else:
+                saved = ack_number
+                count_saved = 0
+            
             if ack_number == seq_num + 1:
                 seq_num += 1
                 totalSent += len(part)
@@ -68,7 +76,7 @@ def handle_client(server, client_addr):
     delimiter = "\n"
     while True:
         try:
-            data, addr = recv_rdt(server)
+            data, addr, _ = recv_rdt(server, 0, {})
             if not data:
                 break
             buffer += data.decode(FORMAT)
@@ -123,7 +131,7 @@ def run():
     
     print(f"Server is running on {HOST} : {PORT}\n")
     try:
-        data, addr = recv_rdt(server)
+        data, addr, _ = recv_rdt(server, 0, {})
         if data.decode(FORMAT) == "CONNECT":
             print(f"Connection request from {addr}")
             welcome = "Welcome to the server!\n".encode(FORMAT)
@@ -136,7 +144,7 @@ def run():
             print(f"Invalid connection request from {addr}")
             return
         
-        data, addr = recv_rdt(server)
+        data, addr, _ = recv_rdt(server, 1, {})
         if data.decode(FORMAT).startswith("HANDLE"):
             print(f"Client {addr} connected.\n")
             handle_client(server, addr)

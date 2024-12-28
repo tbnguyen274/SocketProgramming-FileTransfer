@@ -21,14 +21,13 @@ CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(CUR_PATH, "output")
 active_threads = []
 
-
 def fetch_file_list(client):
     msg_file_list = make_packet(0, b"FILE_LIST\n")
     ack = send_rdt(client, ADDR, msg_file_list)
     if ack != 1:
         print("Failed to fetch file list.")
         return
-    file_list, _ = recv_rdt(client)
+    file_list, _, _ = recv_rdt(client, 0, {})
     file_list = file_list.decode()
     
     print("Available files on the server:")
@@ -50,8 +49,6 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
         if iteration == total:
             sys.stdout.write('\n')
 
-
-
 def download_chunk(client, filename, offset, chunk_size, part_id, progress, total_progress, total_size):
     retry_count = 0
     seq_num = 0
@@ -69,7 +66,7 @@ def download_chunk(client, filename, offset, chunk_size, part_id, progress, tota
 
             with open(chunk_path, "wb") as chunk_file:
                 while total_received < chunk_size:
-                    data, _ = recv_rdt(client)
+                    data, _, seq_num = recv_rdt(client, seq_num, {})
 
                     chunk_file.write(data)
                     total_received += len(data)
@@ -77,7 +74,6 @@ def download_chunk(client, filename, offset, chunk_size, part_id, progress, tota
                     progress[part_id] = total_received
                     total_progress[0] = sum(progress)
                     
-                    seq_num += 1
                     print_progress_bar(total_progress[0], total_size, prefix="Downloading", suffix=f"of {filename}")
                     
                 print(f"Finished downloading {filename}\n")
@@ -88,7 +84,6 @@ def download_chunk(client, filename, offset, chunk_size, part_id, progress, tota
                 print(f"Error downloading chunk {part_id} of {filename}: {e}")
             else:
                 print(f"Retrying chunk {part_id} of {filename}...")
-
 
 def main():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
@@ -102,11 +97,13 @@ def main():
             return
         else:
             print("Connected to the server.")
-        welcome, _ = recv_rdt(client)
+        welcome, _, _ = recv_rdt(client, 0, {})
         print(welcome.decode())
+
         
         handle_msg = make_packet(1, b"HANDLE")
         ack = send_rdt(client, ADDR, handle_msg)
+        print(ack)
         if ack != 2:
             print("Failed to connect to the server.")
             return
@@ -139,7 +136,7 @@ def main():
                 print("Failed to fetch file size.")
                 return
             
-            file_size, _ = recv_rdt(client)
+            file_size, _, _ = recv_rdt(client, 0, {})
             file_size = int(file_size.decode())
             print(f"Size of {filename}: {file_size}")
             
