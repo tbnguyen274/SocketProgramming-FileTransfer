@@ -102,12 +102,7 @@ def download_file(client, filename, file_size):
             chunk_size += remainder
         print(f"Downloading chunk {i} of {filename}...")
         download_chunk(client, filename, order, offset, chunk_size, i, progress, total_progress, file_size)
-        # thread = threading.Thread(target=download_chunk, args=(client, filename, order, offset, chunk_size, i, progress, total_progress, file_size))
-        # threads.append(thread)
-        # active_threads.append(thread)
-        # thread.start()
-    # for thread in threads:
-    #     thread.join()
+
     
     msg_exit = make_packet(0, b"EXIT")
     ack = send_rdt(client, ADDR, msg_exit)
