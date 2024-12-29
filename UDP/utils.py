@@ -10,7 +10,7 @@ BUFFER_SIZE = 1024 * 4
 FORMAT = "utf-8"
 CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 MAX_RETRIES = 3
-INVALID_PACKET = 0xFFFFFFFF
+INVALID_PACKET = 0xFFFFFFFF # Invalid sequence number
 
 # Constants for reliable UDP
 INITIAL_TIMEOUT = 1.0  # Initial timeout in seconds
@@ -143,9 +143,9 @@ def recv_rdt(client, expected_seq, received_packets):
             
             # Unpack and verify checksum
             packet_checksum = struct.unpack('!32s', data[:32])[0].decode()
-            payload = data[32:]
+            payload = data[32:] 
+            
             if calculate_checksum(payload) == packet_checksum:
-                
                 if len(payload) < 4:
                     # print("Invalid packet received, sending NACK")
                     nack = struct.pack('!I', INVALID_PACKET)

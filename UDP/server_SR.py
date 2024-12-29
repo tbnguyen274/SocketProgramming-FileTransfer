@@ -30,7 +30,7 @@ def scan_available_files():
             list.write(f"{file} {round(os.path.getsize(os.path.join(FOLDER, file)) / MB, 2)}MB\n")
 
 
-def send_file_chunk(server, client_addr, file, offset, chunk, seq_num, request_id):
+def send_file(server, client_addr, file, offset, chunk, seq_num, request_id):
     
         with open(os.path.join(FOLDER, file), 'rb') as f:
             totalSent = 0
@@ -98,7 +98,7 @@ def handle_client(server, client_addr):
                     
                     if os.path.exists(os.path.join(FOLDER, fileName)) and request_id not in active_requests:
                         active_requests.add(request_id)
-                        send_file_chunk(server, addr, fileName, offset, chunk, seq_num, request_id)
+                        send_file(server, addr, fileName, offset, chunk, seq_num, request_id)
                     else:
                         print(f"File {fileName} not found or request already active.")
                         break

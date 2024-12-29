@@ -5,7 +5,7 @@ from utils import *
 
 
 HOST = socket.gethostbyname(socket.gethostname())
-HOST = '192.168.1.40'
+HOST = '192.168.1.42'
 PORT = 12345
 ADDR = (HOST, PORT)
 NUM_OF_CHUNKS = 4
@@ -43,45 +43,49 @@ def print_progress_bar(iteration, total, prefix='', suffix='', decimals=1, lengt
             sys.stdout.write('\n')
 
 
-def download_file(client, filename, offset, chunk_size, part_id, progress, total_progress, total_size):
+def download_file(client, filename, offset, total_size):
     retry_count = 0
     seq_num = 0
+    progress = 0
     packets = []
     while retry_count < MAX_RETRIES:
         try:
-            request = f"REQUEST {filename} {offset} {chunk_size} {seq_num}\n".encode()          
+            request = f"REQUEST {filename} {offset} {total_size} {seq_num}\n".encode()          
             msg_request = make_packet(0, request)
             ack = send_rdt(client, ADDR, msg_request)
+            
             if ack != 1:
-                print(f"Failed to request chunk {part_id} of {filename}.")
+                print(f"Failed to request file {filename}.")
                 return
+            
             print("OK")
             chunk_path = os.path.join(OUTPUT_DIR, filename)
             total_received = 0
 
             with open(chunk_path, "wb") as chunk_file:
                 receiver = sliding_window_recv(client, seq_num, window_size=10)
+                
                 for data in receiver:
-                    if total_received >= chunk_size:
+                    if total_received >= total_size:
                         receiver.close()  # Signal completion
                         break
+                    
                     for seq, packet in data.items():
                         chunk_file.write(packet)
                         total_received += len(packet)
-                        progress[part_id] = total_received
-                        total_progress[0] = sum(progress)
-                        print_progress_bar(total_progress[0], total_size, prefix="Downloading", suffix=f"of {filename}")
+                        progress = total_received
+                        print_progress_bar(progress, total_size, prefix="Downloading", suffix=f"of {filename}")
                     
-                    if total_received >= chunk_size:
+                    if total_received >= total_size:
                         print(f"Finished downloading {filename}\n")
                         break
                 break
         except Exception as e:
             retry_count += 1
             if retry_count == MAX_RETRIES:
-                print(f"Error downloading chunk {part_id} of {filename}: {e}")
+                print(f"Error downloading file {filename}: {e}")
             else:
-                print(f"Retrying chunk {part_id} of {filename}...")
+                print(f"Retrying download of {filename}...")
 
 def main():
     with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
@@ -136,7 +140,7 @@ def main():
                 print(f"Size of {filename}: {file_size}")
                 
                 print("Downloading requested files...")
-                download_file(client, filename, 0, file_size, 0, [0] * NUM_OF_CHUNKS, [0], file_size)
+                download_file(client, filename, 0, file_size)
 
             print("Finished downloading requested files.")
             input("Press Enter to exit...")
