@@ -48,7 +48,10 @@ def send_file(server, client_addr, file, offset, chunk, seq_num, request_id):
                 totalSent += len(part)
             
             # print(f"Sending file chunk: {file} {offset} {chunk} {seq_num}")
-            sliding_window_send(server, client_addr, packets, window_size=10)
+            # sliding_window_send(server, client_addr, packets, window_size=10)
+            
+            adaptive_window = AdaptiveWindow()
+            modified_sliding_window_send(server, client_addr, packets, adaptive_window)            
             # print(f"Finished sending file chunk: {file} {offset} {chunk} {seq_num}")
             active_requests.remove(request_id)
 

@@ -63,7 +63,8 @@ def download_file(client, filename, offset, total_size):
             total_received = 0
 
             with open(chunk_path, "wb") as chunk_file:
-                receiver = sliding_window_recv(client, seq_num, window_size=10)
+                adaptive_window = AdaptiveWindow()
+                receiver = modified_sliding_window_recv(client, seq_num, adaptive_window)
                 
                 for data in receiver:
                     if total_received >= total_size:
