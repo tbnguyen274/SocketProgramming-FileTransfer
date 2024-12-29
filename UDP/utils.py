@@ -179,7 +179,7 @@ def recv_rdt(client, expected_seq, received_packets):
                 nack = struct.pack('!I', INVALID_PACKET)
                 client.sendto(nack, addr)
         except socket.timeout:
-            print("Timeout while receiving packet")
+            # print("Timeout while receiving packet")
             continue
         except Exception as e:
             print(f"Unexpected error in recv_rdt: {e}")
@@ -282,7 +282,7 @@ def sliding_window_recv(client, expected_seq, window_size):
                     buffer[next_seq-1] = data
 
         except socket.timeout:
-            print("Timeout while receiving packet")
+            # print("Timeout while receiving packet")
             continue
         except Exception as e:
             print(f"Error in sliding window receive: {e}")
