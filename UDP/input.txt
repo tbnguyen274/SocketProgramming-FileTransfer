@@ -5,3 +5,4 @@ LeagueClient.exe
 dsa.zip
 5MB.zip
 1GB.zip
+2GB.zip

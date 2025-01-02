@@ -56,44 +56,6 @@ def verify_packet(packet):
     return stored_checksum == calculated_checksum
 
 
-# def send_rdt(client, addr, packet):
-#     while True:
-#         client.sendto(packet, addr)
-#         try:
-#             client.settimeout(TIMEOUT)
-#             response, _ = client.recvfrom(BUFFER_SIZE)
-#             response_number = struct.unpack('!I', response)[0]
-#             if response_number == 0:  # NACK received
-#                 print("NACK received, resending packet")
-#                 continue
-#             return response_number  # ACK received
-#         except socket.timeout:
-#             print("Timeout, resending packet")
-
-
-# def recv_rdt(client):
-#     """Receive a packet and send an acknowledgment."""
-#     while True:
-#         try:
-#             data, addr = client.recvfrom(BUFFER_SIZE)
-#             packet_checksum = struct.unpack('!32s', data[:32])[0].decode()
-#             payload = data[32:]
-#             if calculate_checksum(payload) == packet_checksum:
-#                 seq_num = struct.unpack('!I', payload[:4])[0]
-#                 ack = struct.pack('!I', seq_num + 1)
-#                 client.sendto(ack, addr)
-#                 return payload[4:], addr
-#             else:
-#                 print("Checksum mismatch, sending NACK")
-#                 nack = struct.pack('!I', 0) # NACK with sequence number 0 (invalid packet)
-#                 client.sendto(nack, addr)
-#         except socket.timeout:
-#             print("Timeout while receiving packet")
-#         except struct.error as e:
-#             print(f"Packet structure error: {e}")
-#         except Exception as e:
-#             print(f"Unexpected error in recv_rdt: {e}")
-
 
 def send_rdt(client, addr, packet):
     """Send a packet and handle retransmissions with dynamic timeout."""
@@ -187,10 +149,47 @@ def recv_rdt(client, expected_seq, received_packets):
 
 
  
+ 
+# def send_rdt(client, addr, packet):
+#     while True:
+#         client.sendto(packet, addr)
+#         try:
+#             client.settimeout(TIMEOUT)
+#             response, _ = client.recvfrom(BUFFER_SIZE)
+#             response_number = struct.unpack('!I', response)[0]
+#             if response_number == 0:  # NACK received
+#                 print("NACK received, resending packet")
+#                 continue
+#             return response_number  # ACK received
+#         except socket.timeout:
+#             print("Timeout, resending packet")
+
+
+# def recv_rdt(client):
+#     """Receive a packet and send an acknowledgment."""
+#     while True:
+#         try:
+#             data, addr = client.recvfrom(BUFFER_SIZE)
+#             packet_checksum = struct.unpack('!32s', data[:32])[0].decode()
+#             payload = data[32:]
+#             if calculate_checksum(payload) == packet_checksum:
+#                 seq_num = struct.unpack('!I', payload[:4])[0]
+#                 ack = struct.pack('!I', seq_num + 1)
+#                 client.sendto(ack, addr)
+#                 return payload[4:], addr
+#             else:
+#                 print("Checksum mismatch, sending NACK")
+#                 nack = struct.pack('!I', 0) # NACK with sequence number 0 (invalid packet)
+#                 client.sendto(nack, addr)
+#         except socket.timeout:
+#             print("Timeout while receiving packet")
+#         except struct.error as e:
+#             print(f"Packet structure error: {e}")
+#         except Exception as e:
+#             print(f"Unexpected error in recv_rdt: {e}")
 
 
 # selective repeat            
-
 def sliding_window_send(client, addr, packets, window_size):
     """Improved sliding window send with per-packet timers and selective retransmissions."""
     global estimated_rtt, deviation, timeout_interval

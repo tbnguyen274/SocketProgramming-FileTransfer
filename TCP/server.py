@@ -1,18 +1,22 @@
 import socket
 import os
 import threading
+import signal
+import sys
 
-HOST = '0.0.0.0' # Host listening on all interfaces
+HOST = socket.gethostbyname(socket.gethostname())
 PORT = 12345
 CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 FOLDER = os.path.join(CUR_PATH, 'files')
 FILELIST = os.path.join(CUR_PATH, 'filelist.txt')
-BUFFER = 1024
+BUFFER = 1024 * 4
 FORMAT = 'utf-8'
 MB = 1024 * 1024
 MAX_CONNECTIONS = 10
 
+
 def getFileList():
+    scanFiles()
     fileList = []
 
     with open(FILELIST, 'r') as list:
@@ -22,18 +26,11 @@ def getFileList():
     
     return fileList
 
-def getFileName():
-    file_list = []
-    with open('files.txt', 'r') as file:
-        for line in file:
-            file_name = line.split()[0]
-            file_list.append(file_name)
-    return file_list
 
 def scanFiles():
     scannedFiles = []
-
     folder = os.listdir(FOLDER)
+    
     for file in folder:
         if os.path.isfile(os.path.join(FOLDER, file)):
             scannedFiles.append(file)
@@ -42,8 +39,6 @@ def scanFiles():
         for file in scannedFiles:
             list.write(f"{file} {round(os.path.getsize(os.path.join(FOLDER, file)) / MB, 2)}MB\n")
         
-    
-    return scannedFiles
 
 def sendFileChunk(client, file, offset, chunk):
     with open(os.path.join(FOLDER, file), 'rb') as f:
@@ -51,14 +46,16 @@ def sendFileChunk(client, file, offset, chunk):
         f.seek(offset)
 
         while totalSent < chunk:
-            part = f.read(BUFFER if chunk - totalSent > BUFFER else chunk - totalSent)
+            part = f.read(min(BUFFER, chunk - totalSent))
             sent = client.send(part)
             totalSent += sent
             f.seek(offset + totalSent)
 
-def processClient(server, client, addr, files):
+
+def processClient(server, client, addr):
     buffer = ""
     delimiter = "\n"
+    
     while True:
         try:
             data = client.recv(BUFFER).decode(FORMAT)
@@ -66,8 +63,10 @@ def processClient(server, client, addr, files):
                 break
             
             buffer += data
+            
             while delimiter in buffer:
                 request, buffer = buffer.split(delimiter, 1)
+                
                 if request == "CONNECT":
                     print(f"Client {addr} connected successfully.")
                     welcome = f"Welcome to the server, {addr}!\n"
@@ -102,28 +101,27 @@ def processClient(server, client, addr, files):
                     print(f"Client {addr} disconnected.\n")
                     client.close()
                     return
+                
         except Exception as e:
             print(f"Error processing request from {addr}: {e}")
             break
 
     client.close()
-    #print(f"Client {addr} disconnected.")
+    print(f"Client {addr} disconnected.")
 
-    
 
 def run():
-    files = scanFiles()
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.bind((HOST, PORT))
     server.listen(MAX_CONNECTIONS)
-    print(f"Server is running on port: {PORT}.\n")
+    print(f"Server is running on {HOST} : {PORT}.\n")
     
     try:
         while True:
             conn, addr = server.accept()
-
-            clientThread = threading.Thread(target=processClient, args=(server, conn, addr, files))  
+            clientThread = threading.Thread(target=processClient, args=(server, conn, addr))  
             clientThread.start()
+            
     finally:
         server.close()
 

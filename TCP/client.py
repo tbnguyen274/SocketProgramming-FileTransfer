@@ -1,5 +1,3 @@
-# Description: Client side of the TCP file transfer system
-
 import socket
 import threading
 import os
@@ -15,18 +13,20 @@ yêu cầu server gửi từng chunk cho mỗi kết nối.
 - Sau khi tải xong các chunks, nối các phần đã download của một file thành file hoàn chỉnh. (kiểm tra bằng cách kiểm tra tổng
 dung lượng và mở file thành công)
 '''
-# HOST = '192.168.1.192'
-HOST = socket.gethostbyname(socket.gethostname())
+
+HOST = input("Enter the server IP address: ")
 PORT = 12345
 ADDR = (HOST, PORT)
 NUM_OF_CHUNKS = 4
 MAX_RETRIES = 3
-BUFFER_SIZE = 1024
+BUFFER_SIZE = 1024 * 4
 FORMAT = "utf-8"
 
 # Get the directory of the current script
 CUR_PATH = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(CUR_PATH, "output")
+INPUT = os.path.join(CUR_PATH, "input.txt")
+
 
 # Active download threads
 active_threads = []
@@ -37,7 +37,7 @@ is_running = True
 # Signal handler for graceful shutdown
 def signal_handler(sig, frame, client):
     global is_running
-    print("Shutting down...")
+    print("Shutting down ...")
     is_running = False
     
     # Send the exit signal to the server
@@ -51,10 +51,12 @@ def signal_handler(sig, frame, client):
 # Register signal handler
 #signal.signal(signal.SIGINT, signal_handler)
 
+
 # Function to fetch the file list from the server
 def fetch_file_list(client):
     client.send("FILELIST\n".encode(FORMAT))
     file_list = client.recv(BUFFER_SIZE).decode()
+    
     print("Available files on the server:")
     print(f"{file_list}")
     
@@ -63,15 +65,20 @@ def fetch_file_list(client):
     
     return file_names
 
+
 # Function to download a chunk
 def display_chunk_progress(progress, filename):
     progress_str = []
+    
     for part_id, chunk in enumerate(progress):
         downloaded = chunk["downloaded"]
         total = chunk["total"]
         percent_complete = (downloaded / total) * 100 if total > 0 else 0
-        progress_str.append(f"part {part_id + 1} .... {percent_complete:.0f}%")
+        
+        progress_str.append(f"Chunk {part_id + 1} ... {percent_complete:.1f}%")
+        
     print(f"\rDownloading {filename}: " + " | ".join(progress_str), end="")
+
 
 def download_chunk(filename, order, offset, chunk_size, part_id, progress):
     retry_count = 0
@@ -95,18 +102,22 @@ def download_chunk(filename, order, offset, chunk_size, part_id, progress):
                         packet = client.recv(BUFFER_SIZE)
                         if not packet:
                             break
+                        
                         chunk_file.write(packet)
                         total_received += len(packet)
                         progress[part_id]["downloaded"] = total_received
                         display_chunk_progress(progress, filename)  # Update progress for all chunks
 
                 break
+        
         except Exception as e:
             retry_count += 1
+            
             if retry_count == MAX_RETRIES:
                 print(f"\nError downloading chunk {part_id} of {filename}: {e}")
             else:
                 print(f"\nRetrying chunk {part_id} of {filename}...")
+
 
 def download_file(filename, file_size):
     chunk_size = file_size // NUM_OF_CHUNKS
@@ -137,12 +148,14 @@ def download_file(filename, file_size):
         with open(path, "wb") as final_file:
             for i in range(NUM_OF_CHUNKS):
                 part_filename = os.path.join(OUTPUT_DIR, f"{filename}.part{i}")
+                
                 try:
                     with open(part_filename, "rb") as chunk_file:
                         final_file.write(chunk_file.read())
                     os.remove(part_filename)  # Clean up chunk files
                 except IOError as e:
                     print(f"\nError processing chunk {i}: {e}")
+    
     except IOError as e:
         print(f"\nError creating final file: {e}")
 
@@ -153,15 +166,13 @@ def download_file(filename, file_size):
 def monitor_input_file(client, available_files):
     downloaded_files = set()
     unavailable_files = set()
+    global is_running
 
     while is_running:
         try:
-            # Construct the full path to the input file
-            input_file_path = os.path.join(CUR_PATH, "input.txt")
-
             # Read the list of files to download
             input_files = []
-            with open(input_file_path, "r") as f:
+            with open(INPUT, "r") as f:
                 for file in f:
                     input_files.append(file.strip())
 
@@ -179,8 +190,12 @@ def monitor_input_file(client, available_files):
                     continue  # Skip unavailable files
                 
                 print(f"Request to download {filename}... detected.")
+                
+                # Request the file size from the server
                 client.send(f"SIZE {filename}\n".encode())
                 file_size = int(client.recv(BUFFER_SIZE).decode())
+                
+                # Download file
                 download_file(filename, file_size)
 
                 # Respond to the server that the file has been downloaded
@@ -194,8 +209,10 @@ def monitor_input_file(client, available_files):
             print(f"Error monitoring input file: {e}")
             break
 
+
 def main():
     global is_running
+    
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
         # Register signal handler for Ctrl+C
         signal.signal(signal.SIGINT, lambda sig, frame: signal_handler(sig, frame, client))
@@ -213,19 +230,10 @@ def main():
 
         # Ensure the output directory exists
         os.makedirs(OUTPUT_DIR, exist_ok=True)
-
-        # Start a thread to download new files
-        # monitor_thread = threading.Thread(target=monitor_input_file, args=(client, available_files))
-        # monitor_thread.start()
-
-        # Keep main thread running
-        # while is_running:
-        #     time.sleep(1)
-
-        # Wait monitor finish
-        # monitor_thread.join()
         
+        # Monitor the input file for new downloads
         monitor_input_file(client, available_files)
+
 
 if __name__ == "__main__":
     main()
